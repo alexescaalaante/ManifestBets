@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<title>EdgeTracker</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f3f4f6;color:#111827}
+header{background:#111827;color:white;padding:22px 18px 18px;text-align:center}
+h1{margin:0;font-size:27px}
+.subtitle{margin-top:5px;color:#cbd5e1;font-size:13px}
+.container{max-width:650px;margin:auto;padding:14px}
+.card{background:white;border-radius:16px;padding:16px;margin-bottom:14px;box-shadow:0 2px 10px rgba(0,0,0,.07)}
+.balance{font-size:32px;font-weight:800;margin:4px 0}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+label{font-size:12px;font-weight:700;color:#4b5563;display:block;margin-bottom:5px}
+input,select,textarea{width:100%;border:1px solid #d1d5db;border-radius:10px;padding:11px;font-size:16px;background:white}
+textarea{min-height:75px;resize:vertical}
+.full{grid-column:1/-1}
+button{border:0;border-radius:11px;padding:13px 16px;font-size:16px;font-weight:700;width:100%;background:#111827;color:white}
+button.secondary{background:#e5e7eb;color:#111827}
+button.danger{background:#fee2e2;color:#991b1b}
+.row{display:flex;gap:9px}
+.row button{flex:1}
+.stat{font-size:13px;color:#6b7280}
+.stat strong{display:block;color:#111827;font-size:18px;margin-top:2px}
+.bet{border:1px solid #e5e7eb;border-radius:12px;padding:12px;margin-top:10px}
+.bethead{display:flex;justify-content:space-between;font-weight:800}
+.win{color:#15803d}.loss{color:#b91c1c}.pending{color:#b45309}
+.small{font-size:12px;color:#6b7280;margin-top:5px}
+.hidden{display:none}
+.notice{font-size:13px;color:#4b5563;background:#f9fafb;border-radius:10px;padding:10px;margin-top:10px}
+</style>
+</head>
+<body>
+<header>
+<h1>EdgeTracker</h1>
+<div class="subtitle">Sports Betting Bankroll Tracker</div>
+</header>
+
+<div class="container">
+<div class="card">
+<label>Current Bankroll</label>
+<div class="balance" id="balance">$60.00</div>
+<div class="grid">
+<div class="stat">Starting Bankroll<strong id="start">$60.00</strong></div>
+<div class="stat">Profit/Loss<strong id="profit">$0.00</strong></div>
+<div class="stat">Bets<strong id="count">0</strong></div>
+<div class="stat">Win Rate<strong id="winrate">0%</strong></div>
+</div>
+</div>
+
+<div class="card">
+<h2 style="margin-top:0">Add Bet</h2>
+<div class="grid">
+<div><label>Sport</label><select id="sport"><option>MLB</option><option>NBA</option><option>NFL</option><option>NHL</option><option>Soccer</option><option>Other</option></select></div>
+<div><label>Bet Type</label><select id="type"><option>Moneyline</option><option>Spread</option><option>Total</option><option>Player Prop</option><option>Parlay</option><option>Other</option></select></div>
+<div><label>Team / Player</label><input id="team" placeholder="Yankees"></div>
+<div><label>Opponent</label><input id="opp" placeholder="Red Sox"></div>
+<div><label>Odds</label><input id="odds" type="number" placeholder="-150"></div>
+<div><label>Units</label><input id="units" type="number" step="0.1" value="1"></div>
+<div><label>Model Probability %</label><input id="prob" type="number" step="0.1" placeholder="58"></div>
+<div><label>Sportsbook</label><input id="book" placeholder="DraftKings"></div>
+<div class="full"><label>Analysis / Reason</label><textarea id="analysis" placeholder="Why do you like this bet?"></textarea></div>
+<div class="full"><label>Result</label><select id="result"><option value="pending">Pending</option><option value="win">Win</option><option value="loss">Loss</option></select></div>
+</div>
+<br>
+<button onclick="addBet()">Add Bet</button>
+<div class="notice">Your data is saved automatically on this iPhone in the browser.</div>
+</div>
+
+<div class="card">
+<h2 style="margin-top:0">Bet History</h2>
+<div id="history"></div>
+</div>
+
+<div class="card">
+<div class="row">
+<button class="secondary" onclick="exportData()">Export</button>
+<button class="danger" onclick="clearAll()">Reset</button>
+</div>
+</div>
+</div>
+
+<script>
+const KEY="edgetracker_v1";
+let data=JSON.parse(localStorage.getItem(KEY)||'{"start":60,"bets":[]}');
+
+function money(n){return "$"+Number(n).toFixed(2)}
+function profitForBet(b){
+  if(b.result==="loss") return -b.stake;
+  if(b.result==="win"){
+    const o=Number(b.odds);
+    return o>=0 ? b.stake*(o/100) : b.stake*(100/Math.abs(o));
+  }
+  return 0;
+}
+function render(){
+  const settled=data.bets.filter(b=>b.result!=="pending");
+  const profit=settled.reduce((s,b)=>s+profitForBet(b),0);
+  const wins=settled.filter(b=>b.result==="win").length;
+  document.getElementById("balance").textContent=money(data.start+profit);
+  document.getElementById("start").textContent=money(data.start);
+  document.getElementById("profit").textContent=(profit>=0?"+":"")+money(profit);
+  document.getElementById("count").textContent=data.bets.length;
+  document.getElementById("winrate").textContent=settled.length?Math.round(wins/settled.length*100)+"%":"0%";
+  const h=document.getElementById("history");
+  if(!data.bets.length){h.innerHTML='<div class="small">No bets yet. Add your first bet above.</div>';return}
+  h.innerHTML=data.bets.slice().reverse().map((b,i)=>{
+    const p=profitForBet(b);
+    return `<div class="bet">
+      <div class="bethead"><span>${escapeHtml(b.team||"Unnamed Bet")}</span><span class="${b.result}">${b.result.toUpperCase()}</span></div>
+      <div class="small">${escapeHtml(b.sport)} • ${escapeHtml(b.type)} • vs ${escapeHtml(b.opp||"N/A")}</div>
+      <div class="small">Odds: ${b.odds} • ${b.units}u • Stake: ${money(b.stake)} • Model: ${b.prob?b.prob+"%":"—"}</div>
+      ${b.analysis?`<div class="small">${escapeHtml(b.analysis)}</div>`:""}
+      ${b.result!=="pending"?`<div class="small ${p>=0?"win":"loss"}">${p>=0?"+":""}${money(p)}</div>`:""}
+    </div>`
+  }).join("");
+}
+function addBet(){
+  const units=Math.max(0,Number(document.getElementById("units").value)||0);
+  const odds=Number(document.getElementById("odds").value);
+  if(!document.getElementById("team").value || !Number.isFinite(odds) || units<=0){
+    alert("Enter a Team/Player, valid odds, and units."); return;
+  }
+  const current=data.start+data.bets.filter(b=>b.result!=="pending").reduce((s,b)=>s+profitForBet(b),0);
+  const stake=current*0.01*units;
+  const b={
+    id:Date.now(),sport:sport.value,type:type.value,team:team.value,opp:opp.value,
+    odds,units,prob:prob.value,book:book.value,analysis:analysis.value,result:result.value,stake
+  };
+  data.bets.push(b);save();document.querySelectorAll("input,textarea").forEach(x=>x.value="");
+  units.value="1";result.value="pending";render();
+}
+function save(){localStorage.setItem(KEY,JSON.stringify(data))}
+function clearAll(){
+ if(confirm("Delete all bets and reset bankroll to $60?")){data={start:60,bets:[]};save();render()}
+}
+function exportData(){
+ const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+ const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="edgetracker-backup.json";a.click();
+}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
+render();
+</script>
+</body>
+</html>
