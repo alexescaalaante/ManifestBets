@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>MLB Edge Simulator v3</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f3f4f6;color:#111827}
+header{background:#111827;color:white;padding:22px 18px 18px}h1{margin:0;font-size:24px}header p{margin:6px 0 0;color:#cbd5e1;font-size:13px}
+main{max-width:760px;margin:auto;padding:14px}.card{background:white;border-radius:16px;padding:16px;margin-bottom:14px;box-shadow:0 2px 8px #0000000d}
+h2{font-size:17px;margin:0 0 12px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+label{font-size:12px;font-weight:600;color:#475569}input,select{width:100%;margin-top:5px;padding:12px;border:1px solid #cbd5e1;border-radius:10px;font-size:16px;background:white}
+button{width:100%;border:0;border-radius:12px;padding:14px;background:#111827;color:white;font-size:16px;font-weight:700;margin-top:12px}
+.results{display:none}.big{font-size:34px;font-weight:800}.muted{color:#64748b;font-size:13px}.row{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #e5e7eb}.row:last-child{border:0}.green{color:#047857}.red{color:#b91c1c}.pill{display:inline-block;padding:7px 10px;border-radius:999px;background:#dcfce7;color:#166534;font-weight:700;font-size:12px}
+.smallbtn{background:#e5e7eb;color:#111827;margin-top:8px;font-size:13px;padding:10px}
+footer{text-align:center;color:#64748b;font-size:11px;padding:5px 0 25px}
+@media(max-width:520px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header><h1>⚾ MLB Edge Simulator v3</h1><p>50,000-game Monte Carlo engine • Phase 3A</p></header>
+<main>
+<div class="card">
+<h2>Game Setup</h2>
+<div class="grid">
+<div><label>Home Team</label><input id="home" value="Yankees"></div>
+<div><label>Away Team</label><input id="away" value="Red Sox"></div>
+<div><label>Home expected runs</label><input id="hr" type="number" step=".1" value="5.1"></div>
+<div><label>Away expected runs</label><input id="ar" type="number" step=".1" value="4.0"></div>
+<div><label>Sportsbook ML (home)</label><input id="odds" type="number" value="-125"></div>
+<div><label>Game total</label><input id="total" type="number" step=".5" value="8.5"></div>
+</div>
+<button onclick="simulate()">Run 50,000 Simulations</button>
+<button class="smallbtn" onclick="loadExample()">Load Example</button>
+</div>
+
+<div class="card results" id="results">
+<h2>Simulation Results</h2>
+<div id="headline"></div>
+<div class="row"><span>Home win</span><b id="homeWin"></b></div>
+<div class="row"><span>Away win</span><b id="awayWin"></b></div>
+<div class="row"><span>Home -1.5</span><b id="runline"></b></div>
+<div class="row"><span>Over total</span><b id="over"></b></div>
+<div class="row"><span>Under total</span><b id="under"></b></div>
+<div class="row"><span>Average home runs</span><b id="avgH"></b></div>
+<div class="row"><span>Average away runs</span><b id="avgA"></b></div>
+<div class="row"><span>Average total runs</span><b id="avgT"></b></div>
+</div>
+
+<div class="card results" id="betCard">
+<h2>Betting Value</h2>
+<div class="row"><span>Sportsbook implied probability</span><b id="implied"></b></div>
+<div class="row"><span>Model probability</span><b id="model"></b></div>
+<div class="row"><span>Edge</span><b id="edge"></b></div>
+<div class="row"><span>Estimated EV per $100</span><b id="ev"></b></div>
+<div id="recommendation"></div>
+</div>
+
+<footer>Phase 3A simulator. This is a modeling tool, not a guarantee of results.</footer>
+</main>
+
+<script>
+function poisson(lambda){
+  let L=Math.exp(-lambda), k=0, p=1;
+  do{k++;p*=Math.random()}while(p>L);
+  return k-1;
+}
+function implied(odds){
+  return odds>=0 ? 100/(odds+100) : (-odds)/(-odds+100);
+}
+function fmt(x){return (x*100).toFixed(1)+"%"}
+function simulate(){
+  const H=parseFloat(document.getElementById('hr').value);
+  const A=parseFloat(document.getElementById('ar').value);
+  const odds=parseFloat(document.getElementById('odds').value);
+  const total=parseFloat(document.getElementById('total').value);
+  const N=50000;
+  let hw=0, aw=0, rl=0, ov=0, suH=0, suA=0;
+  for(let i=0;i<N;i++){
+    const h=poisson(H), a=poisson(A);
+    suH+=h;suA+=a;
+    if(h>a) hw++; else if(a>h) aw++;
+    if(h-a>=2) rl++;
+    if(h+a>total) ov++;
+  }
+  const hp=hw/N, ap=aw/N, rlp=rl/N, op=ov/N;
+  const imp=implied(odds), edge=hp-imp;
+  const profit=odds>0?odds:10000/(-odds);
+  const ev=hp*profit-(1-hp)*100;
+  document.getElementById('results').style.display='block';
+  document.getElementById('betCard').style.display='block';
+  document.getElementById('homeWin').textContent=fmt(hp);
+  document.getElementById('awayWin').textContent=fmt(ap);
+  document.getElementById('runline').textContent=fmt(rlp);
+  document.getElementById('over').textContent=fmt(op);
+  document.getElementById('under').textContent=fmt(1-op);
+  document.getElementById('avgH').textContent=(suH/N).toFixed(2);
+  document.getElementById('avgA').textContent=(suA/N).toFixed(2);
+  document.getElementById('avgT').textContent=((suH+suA)/N).toFixed(2);
+  document.getElementById('implied').textContent=fmt(imp);
+  document.getElementById('model').textContent=fmt(hp);
+  document.getElementById('edge').textContent=(edge>=0?"+":"")+fmt(edge);
+  document.getElementById('ev').textContent=(ev>=0?"+":"")+"$"+ev.toFixed(2);
+  const rec=document.getElementById('recommendation');
+  if(edge>=.03){rec.innerHTML='<div class="pill">🟢 MODEL EDGE ≥ 3% — CANDIDATE BET</div>'}
+  else if(edge>0){rec.innerHTML='<div class="pill" style="background:#fef3c7;color:#92400e">🟡 POSITIVE EDGE — BELOW 3% THRESHOLD</div>'}
+  else{rec.innerHTML='<div class="pill" style="background:#fee2e2;color:#991b1b">🔴 NO MODEL EDGE</div>'}
+  document.getElementById('headline').innerHTML='<div class="big">'+document.getElementById('home').value+' '+fmt(hp)+'</div><div class="muted">'+N.toLocaleString()+' simulated games</div>';
+}
+function loadExample(){
+ document.getElementById('home').value='Yankees';
+ document.getElementById('away').value='Red Sox';
+ document.getElementById('hr').value='5.1';
+ document.getElementById('ar').value='4.0';
+ document.getElementById('odds').value='-125';
+ document.getElementById('total').value='8.5';
+ simulate();
+}
+</script>
+</body>
+</html>
